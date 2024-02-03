@@ -1,5 +1,7 @@
 package com.alba;
 
+import com.alba.utils.DateHelper;
+import com.alba.utils.ExcelHelper;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
@@ -8,10 +10,14 @@ import org.postgresql.ds.PGSimpleDataSource;
 
 import javax.sql.DataSource;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -28,7 +34,7 @@ public class App {
 
     private final static double quota = 63.0;
 
-    public static void main(String[] args) throws SQLException {
+    public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
         int option;
 
@@ -45,31 +51,73 @@ public class App {
             switch (option) {
                 case 1:
                     System.out.println("You chose option 1");
-                    ExcelHelper.createXlslWithSelectedTerm(Term.Dates.FIRST_TERM);
+                    processing(Term.Dates.FIRST_TERM);
                     break;
                 case 2:
                     System.out.println("You chose option 2");
-                    ExcelHelper.createXlslWithSelectedTerm(Term.Dates.SECOND_TERM);
+                    processing(Term.Dates.SECOND_TERM);
                     break;
                 case 3:
                     System.out.println("You chose option 3");
-                    ExcelHelper.createXlslWithSelectedTerm(Term.Dates.THIRD_TERM);
+                    processing(Term.Dates.THIRD_TERM);
                     break;
                 case 4:
-                    System.out.println("Exiting...");
                     break;
                 default:
                     System.out.println("Invalid option. Please choose again.");
             }
 
-            
+        } while (option != 4);
+        scanner.close();
+    }
+
+    private static void processing(Term.Dates term) {
+        XSSFWorkbook document = ExcelHelper.createXlslWithSelectedTerm(term);
+        moveTransactionsToSheet(term, document);
+
+        try (FileOutputStream outputStream = new FileOutputStream("Alba" + term.getName() + ".xlsx")) {
+            document.write(outputStream);
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
 //            uploadXslxFromBankWithNumSocio();
 
 //            crossReferencesWithSocios();
 //            excelTable();
-        } while (option != 4);
+    }
 
-        scanner.close();
+    private static void moveTransactionsToSheet(Term.Dates dates, XSSFWorkbook document) {
+        try {
+            FileInputStream file = new FileInputStream("/Users/jd185241/dev/alba/src/main/resources/Statement_Aug23_Feb24.xlsx");
+            XSSFWorkbook workbook = new XSSFWorkbook(file);
+            XSSFSheet sheet = workbook.getSheetAt(0);
+
+            Iterator<Row> rowIterator = sheet.iterator();
+            int i = 0;
+            while (rowIterator.hasNext()) {
+                Row row = rowIterator.next();
+                Cell transaction_date = row.getCell(0);
+
+                try {
+                    Date transactionDate = transaction_date.getDateCellValue();
+                    if (transactionDate == null) {
+                        continue;
+                    }
+                    LocalDate localDate = DateHelper.convertToLocalDateViaInstant(transactionDate);
+                    if (Term.isDateInRange(dates, localDate)) {
+                        ExcelHelper.copyRow(document, row,i++);
+                    }
+                } catch (IllegalStateException e) {
+                    e.printStackTrace();
+                }
+            }
+            file.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
 
@@ -195,7 +243,7 @@ public class App {
     }
 
     private static Map<String, String> getParentNames(Connection conn) throws SQLException {
-        Map<String,String> dvalues = new HashMap<>();
+        Map<String, String> dvalues = new HashMap<>();
         PreparedStatement stmt = conn.prepareStatement("select * from socio");
         ResultSet rs = stmt.executeQuery();
         while (rs.next()) {
@@ -203,6 +251,7 @@ public class App {
         }
         return dvalues;
     }
+
     private static Map<String[], Double[]> getAllNumberSocioWithQuota(Connection conn) throws SQLException {
         Map<String[], Double[]> dvalues = new HashMap<>();
         PreparedStatement stmt = conn.prepareStatement("select * from socio");
