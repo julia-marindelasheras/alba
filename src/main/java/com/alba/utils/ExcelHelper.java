@@ -5,10 +5,6 @@ import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.*;
 
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-
 public class ExcelHelper {
 
     public static XSSFWorkbook createXlslWithSelectedTerm(Term.Dates term) {
@@ -20,21 +16,6 @@ public class ExcelHelper {
 
         return workbook;
     }
-
-//    public static void excelTable() {
-//        XSSFWorkbook workbook = new XSSFWorkbook();
-//        createSheet("Members not Found", workbook);
-//        createSheet("Bank deposits without numMember", workbook);
-//        createSheet("Members Found and payments", workbook);
-//
-//        try (FileOutputStream outputStream = new FileOutputStream("AlbaTest.xlsx")) {
-//            workbook.write(outputStream);
-//        } catch (FileNotFoundException e) {
-//            throw new RuntimeException(e);
-//        } catch (IOException e) {
-//            throw new RuntimeException(e);
-//        }
-//    }
 
     public static void copyRow(XSSFWorkbook workbook, Row sourceRow, int destinationRowNum) {
 
@@ -92,41 +73,23 @@ public class ExcelHelper {
         }
     }
 
-//    private static void createSheet(String nameSheet, XSSFWorkbook workbook) {
-//        XSSFSheet sheet = workbook.createSheet(nameSheet);
-//
-//        XSSFTable table = sheet.createTable(null);
-//        CTTable cttable = table.getCTTable();
-//
-//        cttable.setDisplayName("Table1");
-//        cttable.setId(1);
-//        cttable.setName("Test");
-//        cttable.setRef("A1:C11");
-//        cttable.setTotalsRowShown(false);
-//
-//        CTTableStyleInfo styleInfo = cttable.addNewTableStyleInfo();
-//        styleInfo.setName("TableStyleMedium2");
-//        styleInfo.setShowColumnStripes(false);
-//        styleInfo.setShowRowStripes(true);
-//
-//        CTTableColumns columns = cttable.addNewTableColumns();
-//        columns.setCount(3);
-//        for (int i = 1; i <= 3; i++) {
-//            CTTableColumn column = columns.addNewTableColumn();
-//            column.setId(i);
-//            column.setName("Column" + i);
-//        }
-//
-//        for (int r = 0; r < 2; r++) {
-//            XSSFRow row = sheet.createRow(r);
-//            for (int c = 0; c < 3; c++) {
-//                XSSFCell cell = row.createCell(c);
-//                if (r == 0) { //first row is for column headers
-//                    cell.setCellValue("Column" + (c + 1)); //content **must** be here for table column names
-//                } else {
-//                    cell.setCellValue("Data R" + (r + 1) + "C" + (c + 1));
-//                }
-//            }
-//        }
-//    }
+    public static void copyDataInASheet(XSSFSheet sheet, int rownum, String extractBankDescription, Double paid) {
+        XSSFRow row = sheet.createRow(rownum);
+        XSSFCell description = row.createCell(0);
+        description.setCellValue(extractBankDescription);
+        XSSFCell moneyPaid = row.createCell(1);
+        moneyPaid.setCellValue(paid);
+    }
+
+    public static void copyDataInASheet(XSSFSheet sheet, int rownum, String numSocio, String parentName, Double amount, Double paid) {
+        XSSFRow row = sheet.createRow(rownum);
+        XSSFCell numSocioCell = row.createCell(0);
+        numSocioCell.setCellValue(numSocio);
+        XSSFCell parentNameCell = row.createCell(1);
+        parentNameCell.setCellValue(parentName);
+        XSSFCell moneyToPaidCell = row.createCell(2);
+        moneyToPaidCell.setCellValue(amount);
+        XSSFCell moneyPaidCell = row.createCell(3);
+        moneyPaidCell.setCellValue(paid);
+    }
 }

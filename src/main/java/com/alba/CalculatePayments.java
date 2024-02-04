@@ -1,7 +1,7 @@
 package com.alba;
 
-import com.alba.utils.DateHelper;
 import com.alba.utils.ExcelHelper;
+import org.apache.poi.openxml4j.util.ZipSecureFile;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
@@ -10,26 +10,23 @@ import org.postgresql.ds.PGSimpleDataSource;
 
 import javax.sql.DataSource;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.LocalDate;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-
-public class App {
+public class CalculatePayments {
 
     private final static Map<String, Double> map = new HashMap<>();
-    private static Map<String[], Double[]> mapSociosQuotas = new HashMap<>();
-    private final static Set<String> notFoundSocios = new HashSet<>();
+    private static Map<String, Socio>  mapSociosQuotas = new HashMap<>();
+    private final static Map<String, Double> notFoundSocios = new HashMap<>();
     private final static Set<String> foundWithName = new HashSet<>();
 
     private final static double quota = 63.0;
@@ -50,16 +47,13 @@ public class App {
 
             switch (option) {
                 case 1:
-                    System.out.println("You chose option 1");
-                    processing(Term.Dates.FIRST_TERM);
+                    processingPayments(Term.Dates.FIRST_TERM);
                     break;
                 case 2:
-                    System.out.println("You chose option 2");
-                    processing(Term.Dates.SECOND_TERM);
+                    processingPayments(Term.Dates.SECOND_TERM);
                     break;
                 case 3:
-                    System.out.println("You chose option 3");
-                    processing(Term.Dates.THIRD_TERM);
+                    processingPayments(Term.Dates.THIRD_TERM);
                     break;
                 case 4:
                     break;
@@ -71,89 +65,16 @@ public class App {
         scanner.close();
     }
 
-    private static void processing(Term.Dates term) {
-        XSSFWorkbook document = ExcelHelper.createXlslWithSelectedTerm(term);
-        moveTransactionsToSheet(term, document);
-
-        try (FileOutputStream outputStream = new FileOutputStream("Alba" + term.getName() + ".xlsx")) {
-            document.write(outputStream);
-        } catch (FileNotFoundException e) {
-            throw new RuntimeException(e);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-
-//            uploadXslxFromBankWithNumSocio();
-
-//            crossReferencesWithSocios();
-//            excelTable();
-    }
-
-    private static void moveTransactionsToSheet(Term.Dates dates, XSSFWorkbook document) {
-        try {
-            FileInputStream file = new FileInputStream("/Users/jd185241/dev/alba/src/main/resources/Statement_Aug23_Feb24.xlsx");
-            XSSFWorkbook workbook = new XSSFWorkbook(file);
-            XSSFSheet sheet = workbook.getSheetAt(0);
-
-            Iterator<Row> rowIterator = sheet.iterator();
-            int i = 0;
-            while (rowIterator.hasNext()) {
-                Row row = rowIterator.next();
-                Cell transaction_date = row.getCell(0);
-
-                try {
-                    Date transactionDate = transaction_date.getDateCellValue();
-                    if (transactionDate == null) {
-                        continue;
-                    }
-                    LocalDate localDate = DateHelper.convertToLocalDateViaInstant(transactionDate);
-                    if (Term.isDateInRange(dates, localDate)) {
-                        ExcelHelper.copyRow(document, row,i++);
-                    }
-                } catch (IllegalStateException e) {
-                    e.printStackTrace();
-                }
-            }
-            file.close();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-
-    public static void crossReferencesWithSocios() throws SQLException {
-
-        DataSource dataSource = connectToDB();
-        Connection conn = dataSource.getConnection();
-        mapSociosQuotas = getAllNumberSocioWithQuota(conn);
-
-        for (String[] st : mapSociosQuotas.keySet()) {
-            String s = st[0];
-            if (map.containsKey(s)) {
-                Double[] values = mapSociosQuotas.get(s);
-                values[1] = map.get(s);
-                mapSociosQuotas.put(st, values);
-                map.remove(s);
-            } else {
-                Double aSocioByParentName = findASocioByParentName(conn, s);
-                if (aSocioByParentName != 0.0) {
-                    Double[] values = mapSociosQuotas.get(s);
-                    values[1] = values[1] + aSocioByParentName;
-                    mapSociosQuotas.put(st, values);
-                    map.remove(s);
-                } else {
-                    notFoundSocios.add(s);
-                }
-            }
-        }
-
-    }
-
-    public static void uploadXslxFromBankWithNumSocio() {
+    public static void processingPayments(Term.Dates term) {
 
         try {
-            FileInputStream file = new FileInputStream("/Users/jd185241/dev/alba/alba/src/main/resources/Statement_Aug23_Feb24.xlsx");
+            ZipSecureFile.setMinInflateRatio(0);
+
+            mapSociosQuotas = getMapSociosQuotas();
+
+            FileInputStream file = new FileInputStream("/Users/jd185241/dev/alba/Alba" + term.getName() + ".xlsx");
             XSSFWorkbook workbook = new XSSFWorkbook(file);
+
             XSSFSheet sheet = workbook.getSheetAt(0);
 
             Iterator<Row> rowIterator = sheet.iterator();
@@ -172,64 +93,90 @@ public class App {
                     continue;
                 }
 
-                String numSocio = findNumSocio(transaction_description, credit_amount);
+                if (credit_amount.getNumericCellValue() == 0.0) {
+                    continue;
+                }
+
+                String numSocio = findNumSocio(transaction_description);
+
                 if (numSocio == null) {
-                    numSocio = findNumSocioWithHyphen(transaction_description, credit_amount);
+                    numSocio = findNumSocioWithHyphen(transaction_description);
                 }
 
                 if (numSocio == null) {
-                    numSocio = findWithParentName(transaction_description, credit_amount);
+                    numSocio = findWithAnyFourDigitsInsideString(transaction_description);
                 }
 
                 if (numSocio != null) {
-                    if (map.containsKey(numSocio)) {
-                        double total = credit_amount.getNumericCellValue() + map.get(numSocio);
-                        map.put(numSocio, total);
+                    if (mapSociosQuotas.containsKey(numSocio)) {
+                        double total = credit_amount.getNumericCellValue() + mapSociosQuotas.get(numSocio).getPaid();
+                        mapSociosQuotas.get(numSocio).setPaid(total);
                     } else {
-                        map.put(numSocio, credit_amount.getNumericCellValue());
+                        notFoundSocios.put(transaction_description.getStringCellValue(), credit_amount.getNumericCellValue());
                     }
                 } else {
-                    notFoundSocios.add(transaction_description.getStringCellValue());
+                    notFoundSocios.put(transaction_description.getStringCellValue(), credit_amount.getNumericCellValue());
                 }
             }
             file.close();
+
+            copyNotFoundSociosToExcel(workbook.getSheetAt(1));
+            copyFoundSociosToExcel(workbook.getSheetAt(2));
+            try (FileOutputStream outputStream = new FileOutputStream("Alba" + term.getName() + ".xlsx")) {
+                workbook.write(outputStream);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
+
     }
 
-    private static String findNumSocioWithHyphen(Cell transaction_description, Cell credit_amount) {
+    private static void copyNotFoundSociosToExcel(XSSFSheet sheetAt) {
+        int i = 0;
+        for (String s : notFoundSocios.keySet()) {
+            ExcelHelper.copyDataInASheet(sheetAt, i++, s, notFoundSocios.get(s).doubleValue());
+        }
+    }
+    private static void copyFoundSociosToExcel(XSSFSheet sheetAt) {
+        int i = 0;
+        for (String s : mapSociosQuotas.keySet()) {
+            ExcelHelper.copyDataInASheet(sheetAt, i++, s, mapSociosQuotas.get(s).getParentName(), mapSociosQuotas.get(s).getAmount(), mapSociosQuotas.get(s).getPaid());
+        }
+    }
+
+    public static Map<String, Socio> getMapSociosQuotas() throws SQLException {
+        DataSource dataSource = connectToDB();
+        Connection conn = dataSource.getConnection();
+        return getAllNumberSocioWithQuota(conn);
+    }
+
+    private static String findWithAnyFourDigitsInsideString(Cell transaction_description) {
+        Pattern patternSocio = Pattern.compile("\\b\\d{4}\\b");
+        Matcher m = patternSocio.matcher(transaction_description.getStringCellValue());
+        String numSocio = null;
+        if (m.find()) {
+            numSocio = m.group().trim();
+        }
+        return numSocio;
+    }
+    private static String findNumSocioWithHyphen(Cell transaction_description) {
         Pattern patternSocio = Pattern.compile("\\d{4}-\\S+");
         Matcher m = patternSocio.matcher(transaction_description.getStringCellValue());
         String numSocio = null;
         if (m.find()) {
-            numSocio = m.group().substring(0, m.group().indexOf("-"));
+            numSocio = m.group().substring(0, m.group().indexOf("-")).trim();
         }
         return numSocio;
     }
 
-    private static String findNumSocio(Cell transaction_description, Cell credit_amount) {
+    private static String findNumSocio(Cell transaction_description) {
         Pattern patternSocio = Pattern.compile("\\s\\d{4}\\s");
         Matcher m = patternSocio.matcher(transaction_description.getStringCellValue());
         String numSocio = null;
         if (m.find()) {
-            numSocio = m.group();
-        }
-        return numSocio;
-    }
-
-    private static String findWithParentName(Cell transaction_description, Cell credit_amount) throws SQLException {
-        Pattern patternWithNames = Pattern.compile("([^\\d\\s]+) ([^\\d\\s]+) ([^\\d\\s]+) ([^\\d\\s]+)");
-        Matcher m = patternWithNames.matcher(transaction_description.getStringCellValue());
-
-        DataSource dataSource = connectToDB();
-        Connection conn = dataSource.getConnection();
-
-        Map<String, String> parentNames = getParentNames(conn);
-        String numSocio = null;
-        while (m.find()) {
-            numSocio = m.group();
-            foundWithName.add(numSocio);
+            numSocio = m.group().trim();
         }
         return numSocio;
     }
@@ -252,15 +199,16 @@ public class App {
         return dvalues;
     }
 
-    private static Map<String[], Double[]> getAllNumberSocioWithQuota(Connection conn) throws SQLException {
-        Map<String[], Double[]> dvalues = new HashMap<>();
+    private static Map<String, Socio> getAllNumberSocioWithQuota(Connection conn) throws SQLException {
+        Map<String, Socio> dvalues = new HashMap<>();
         PreparedStatement stmt = conn.prepareStatement("select * from socio");
         ResultSet rs = stmt.executeQuery();
         while (rs.next()) {
-            dvalues.put(new String[]{rs.getString("num_socio"), rs.getString("parents_name")}, new Double[]{rs.getInt("num_kids") * quota, 0.0});
-
-            System.out.printf("id:%d num_socio:%s num_kids:%s quota:%s%n", rs.getLong("id"),
-                    rs.getString("num_socio"), rs.getInt("num_kids"), rs.getInt("num_kids") * quota);
+            Socio socio = new Socio();
+            socio.setParentName(rs.getString("parents_name"));
+            socio.setAmount(rs.getInt("num_kids") * quota);
+            socio.setPaid(0.0);
+            dvalues.put(rs.getString("num_socio"), socio);
         }
         return dvalues;
     }
@@ -317,5 +265,4 @@ public class App {
         int deletedRows = deleteStmt.executeUpdate();
         System.out.printf("deleted %s socio(s)%n", deletedRows);
     }
-
 }
