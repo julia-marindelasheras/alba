@@ -28,7 +28,7 @@ public class CalculatePayments {
     private static Map<String, Socio>  mapSociosQuotas = new HashMap<>();
     private final static Map<String, Double> notFoundSocios = new HashMap<>();
 
-    private static double quota = 63.0;
+    private final static double quota = 101.0;
 
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
@@ -45,8 +45,7 @@ public class CalculatePayments {
             option = scanner.nextInt();
 
             System.out.println("Please enter quota:");
-            String input = scanner.nextLine();  // This will read a full line of text
-            quota = Double.parseDouble(input);  // This will read a full line of text
+            quota = scanner.nextLine();  // This will read a full line of text
 
             switch (option) {
                 case 1:
