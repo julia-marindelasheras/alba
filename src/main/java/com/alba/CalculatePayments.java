@@ -27,9 +27,8 @@ public class CalculatePayments {
     private final static Map<String, Double> map = new HashMap<>();
     private static Map<String, Socio>  mapSociosQuotas = new HashMap<>();
     private final static Map<String, Double> notFoundSocios = new HashMap<>();
-    private final static Set<String> foundWithName = new HashSet<>();
 
-    private final static double quota = 63.0;
+    private static double quota = 63.0;
 
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
@@ -44,6 +43,9 @@ public class CalculatePayments {
             System.out.print("Choose an option: ");
 
             option = scanner.nextInt();
+
+            System.out.println("Please enter quota:");
+            quota = Double.parseDouble(scanner.nextLine());  // This will read a full line of text
 
             switch (option) {
                 case 1:
