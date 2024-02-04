@@ -45,7 +45,8 @@ public class CalculatePayments {
             option = scanner.nextInt();
 
             System.out.println("Please enter quota:");
-            quota = Double.parseDouble(scanner.nextLine());  // This will read a full line of text
+            String input = scanner.nextLine();  // This will read a full line of text
+            quota = Double.parseDouble(input);  // This will read a full line of text
 
             switch (option) {
                 case 1:
